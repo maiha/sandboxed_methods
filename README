@@ -1,0 +1,149 @@
+SandboxedMethods
+================
+
+Avoid conflicting method and variable names between modules.
+
+
+What is this?
+=============
+
+You should not write a module or a plugin like this.
+
+module Foo
+  def self.append_features(base)
+    base.__send__ :include, InstanceMethods
+  end
+
+  module InstanceMethods
+    def foo
+      # using internal methods
+      return ...
+    end
+
+    # internal_methods
+    def names
+      ...
+    end
+  end
+end
+
+Although this Foo module intends to give 'foo' class method to callers,
+unfortunately it also gives *internal_methods* and instance variables
+those are spin-off about 'foo' method.
+
+We unconsciously prefer shorter names and tend to use well-conflictable
+method names such as 'names', 'valid?', 'path' for middle(internal) methods.
+Indeed it works sanely in your system, but how about outside of it?
+
+SandboxedMethods helps you to offer methods you intend properly.
+
+
+Usage
+=====
+
+It is easy to use SandboxedMethods. There are only two points.
+
+1) use "SandboxedMethods.give" rather than "extend" or "include" directly
+
+  This class method declares use of published method just like
+  "delegate" or "api" stuff do so.
+
+2) define methods as a sub class of SandboxedMethods
+
+  SandboxedMethods class offers a sandbox for executing methods.
+  Because all published methods are executed in the closed object,
+  the base object can't access other internal methods and variables.
+
+
+Example
+=======
+
+We can remove risks of the conflictions from above example
+by rewriting only two lines.
+
+module Foo
+  def self.append_features(base)
+    InstanceMethods.give(base, :foo)        # 1) use 'give' class methods
+  end
+
+  class InstanceMethods < SandboxedMethods  # 2) use SandboxedMethods class
+    def foo
+      # using internal methods
+      return ...
+    end
+
+    # internal_methods
+    def names
+      ...
+    end
+  end
+end
+
+Now we can create plugins as much as we want without taking
+care of conflictions about internal methods and variables!
+
+
+Advanced
+========
+
+Q) How can I publish all methods defined in my module?
+A) If no methods are specified, it regards all methods as published.
+
+  InstanceMethods.give(base)
+
+Q) How can I publish methods as class methods?
+A) Use ":class=>true" option in "give" method.
+
+  InstanceMethods.give(base, :foo, :class=>true)
+  # It'd be better to rename "InstanceMethods" :)
+
+Q) How can I access instance variables used in base object?
+A) Just write the name as method. (powered by method_missing)
+
+  class InstanceMethods < SandboxedMethods
+    def foo
+      array = objects         # returns '@objects' in base object.
+      size  = attributes.size # returns '@attributes' in base object.
+
+Q) How can I access instance variables those names are used in internal methods?
+A) Use "self[name]" method.
+
+  class InstanceMethods < SandboxedMethods
+    def foo
+      var = self[:foo]  # returns '@foo' in base object.
+
+Q) How can I write instance variables back to base object?
+A) Use "name=" or "[]=(name, val) method.
+
+  class InstanceMethods < SandboxedMethods
+    def foo
+      self.bar = 1   # means '@bar = 1' in base object.
+      self[:bar] = 1 # of course this works too.
+      bar = 1        # this is invalid cause it create a local variable.
+
+Q) How can I access base object directly?
+A) Use "base" method without argument.
+
+  class InstanceMethods < SandboxedMethods
+    def foo
+      base.class  # returns '@foo' in base object.
+
+Q) How can I access methods defined in base object?
+A) Use reference of base object by "base" method if it's public.
+
+  class InstanceMethods < SandboxedMethods
+    def foo
+      base.class  # returns '@foo' in base object.
+
+Q) How can I access non public methods defined in base object?
+A) Use "instance_eval" or "__send__" method to base object :)
+
+  class InstanceMethods < SandboxedMethods
+    def foo
+      base.__send__ :bar
+
+   This is too ugly. Any ideas?
+
+
+Copyright (c) 2008 maiha@wota.jp, released under the MIT license
+
